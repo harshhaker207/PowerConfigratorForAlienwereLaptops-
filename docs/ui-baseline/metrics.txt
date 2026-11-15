@@ -1,0 +1,35 @@
+PowerConfigurator Phase 0 baseline (2026-11-13)
+===============================================
+
+Binary size (current, pre-audit):
+  C:\Users\harsh\PowerConfigurator\PowerConfigurator.exe = 202,240 bytes (197 KB)
+  C:\Users\harsh\PowerConfigurator\build\bin\PowerConfigurator.exe = 162,816 bytes (159 KB)
+  Budget: < 20 MB  -> PASS with enormous headroom.
+
+RAM idle: not measurable in this sandbox (app requires UAC elevation; see below).
+CPU idle: not measurable in this sandbox.
+DPI: primary screen = 96 (100%).
+
+Sandbox limitation (recorded so the after/after comparison is honest):
+  PowerConfigurator.exe is built with /MANIFESTUAC level='requireAdministrator'.
+  The sandbox session is non-elevated, so the app exits immediately with a
+  "Administrator privileges required" message and never opens a window.
+  Therefore no live screenshot, RAM, or CPU measurement could be taken here.
+  This is an environment limitation, not a defect in the audit's plan.
+
+What WAS verified statically (no launch needed):
+  - B-08 (full-window repaint every second): confirmed by reading OnPaint() at
+    UI.cpp:756-923 -- it ignores ps.rcPaint and always paints the full client
+    rect via CreateCompatibleBitmap(width,height). The per-second partial
+    InvalidateRect calls at UI.cpp:1726-1729 are therefore ineffective.
+  - B-07 (hardware applies on every tick): confirmed at UI.cpp:1119-1151
+    (OnHScroll) -- each WM_HSCROLL message calls ApplyCpuPowerSettings /
+    ApplyGpuPowerSettings / OnLedApply, and every one of those paths calls
+    SaveSettings() (disk write).
+  - B-01 (dead thermal tier): confirmed at UI.cpp:844-845 and 865-866 -- both
+    ladders are ">=85 -> AMBER, >=75 -> AMBER", so the >=85 tier can never show
+    a distinct danger color.
+
+Next step: Phase 1 (token engine) does not need the running app; it is pure
+source. After the build succeeds, the "after" metrics must be re-measured in an
+elevated session (run as administrator) to close the before/after evidence.

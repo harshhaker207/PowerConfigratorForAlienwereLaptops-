@@ -1,0 +1,30 @@
+# Build and Output Directories
+build/
+bin/
+obj/
+out/
+
+# Visual Studio & IDE artifacts
+.vs/
+.vscode/
+*.vcxproj.user
+*.vcxproj.filters
+*.VC.db
+*.opendb
+*.suo
+
+# Compiled binaries and intermediate files
+*.exe
+*.dll
+*.obj
+*.pdb
+*.ilk
+*.idb
+*.tlog
+*.exp
+*.lib
+
+# Logs and runtime artifacts
+*.log
+debug.log
+*.tmp
