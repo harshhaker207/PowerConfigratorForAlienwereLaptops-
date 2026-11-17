@@ -1059,7 +1059,14 @@ void UI::CreateControls() {
         L.rSliderGpu.left, L.rSliderGpu.top,
         L.rSliderGpu.right - L.rSliderGpu.left, L.rSliderGpu.bottom - L.rSliderGpu.top,
         m_hwnd, reinterpret_cast<HMENU>(IDC_SLIDER_GPU), m_hInstance, nullptr);
-    SendMessage(m_sliderGpu, TBM_SETRANGE, TRUE, MAKELPARAM(40, 175));
+    int maxGpuW = 135;
+    if (m_gpuMgr && m_gpuMgr->IsAvailable()) {
+        unsigned int limitMw = 0;
+        if (m_gpuMgr->GetPowerLimitMw(&limitMw) && limitMw > 0) {
+            maxGpuW = static_cast<int>(limitMw / 1000);
+        }
+    }
+    SendMessage(m_sliderGpu, TBM_SETRANGE, TRUE, MAKELPARAM(40, maxGpuW));
     SendMessage(m_sliderGpu, TBM_SETPOS, TRUE, 80);
 
     m_lblGpuWatts = CreateWindowExW(0, L"STATIC", L"80 W",
