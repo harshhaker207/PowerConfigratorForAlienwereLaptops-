@@ -118,11 +118,6 @@ void FanManager::WorkerThread() {
                     if (fanIdx == 0) { m_fan1Rpm = static_cast<int>(rpm); hardwareRpmFound = true; }
                     else if (fanIdx == 1) { m_fan2Rpm = static_cast<int>(rpm); hardwareRpmFound = true; }
                 }
-                // Test 3: GetThermalInfo2
-                else if (CallAwccMethod(L"GetThermalInfo2", (fanId << 8) | 0x05, &rpm) && rpm > 400 && rpm < 12000) {
-                    if (fanIdx == 0) { m_fan1Rpm = static_cast<int>(rpm); hardwareRpmFound = true; }
-                    else if (fanIdx == 1) { m_fan2Rpm = static_cast<int>(rpm); hardwareRpmFound = true; }
-                }
                 fanIdx++;
             }
 
@@ -131,8 +126,6 @@ void FanManager::WorkerThread() {
             if (CallAwccMethod(L"Thermal_Information", (0 << 8) | 0x04, &tCpu) && tCpu > 20 && tCpu < 125) {
                 m_cpuTemperature = static_cast<int>(tCpu);
             } else if (CallAwccMethod(L"Thermal_Information", (0x04 << 8) | 0, &tCpu) && tCpu > 20 && tCpu < 125) {
-                m_cpuTemperature = static_cast<int>(tCpu);
-            } else if (CallAwccMethod(L"GetThermalInfo2", (0 << 8) | 0x04, &tCpu) && tCpu > 20 && tCpu < 125) {
                 m_cpuTemperature = static_cast<int>(tCpu);
             }
 
@@ -615,10 +608,10 @@ bool FanManager::SetFanSpeed(int percent) {
             awccProfile = 0xA0; // Balanced
             SetGameShift(false);
         } else if (percent <= 85) {
-            awccProfile = 0xA4; // Performance / Cool
+            awccProfile = 0xA1; // Performance (Uncaps GPU past 65W to 115W-135W)
             SetGameShift(false);
         } else {
-            awccProfile = 0xAB; // Full Speed / G-Mode
+            awccProfile = 0xAB; // Full Speed / G-Mode (Maximum 140W TGP)
             SetGameShift(true);  // Engage GameShift (100% fans)
         }
 
@@ -687,11 +680,11 @@ void FanManager::ApplyPreset(FanPreset preset) {
             break;
         case FanPreset::Cool:
             percent = 75;
-            awccProfile = 0xA4; // AWCC Performance / Cool (0xA4)
+            awccProfile = 0xA1; // Alienware Performance Mode (0xA1) - Unlocks GPU TGP past 65W to 115W-135W
             if (m_winPowerMgr) {
                 m_winPowerMgr->SetSystemCoolingPolicy(CoolingPolicy::Active, CoolingPolicy::Active);
-                m_winPowerMgr->SetProcessorBoostPolicy(BoostPolicy::Enabled, BoostPolicy::Enabled);
-                m_winPowerMgr->SetPowerMode(PowerMode::BetterPerformance);
+                m_winPowerMgr->SetProcessorBoostPolicy(BoostPolicy::Aggressive, BoostPolicy::Aggressive);
+                m_winPowerMgr->SetPowerMode(PowerMode::MaximumPerformance);
             }
             if (m_awccWmiAvailable) {
                 SetGameShift(false);
@@ -699,14 +692,15 @@ void FanManager::ApplyPreset(FanPreset preset) {
             break;
         case FanPreset::Max:
             percent = 100;
-            awccProfile = 0xAB; // AWCC G-Mode / Full Speed (0xAB)
+            awccProfile = 0xAB; // AWCC G-Mode / Full Speed (0xAB) - Maximum TGP 140W
             if (m_winPowerMgr) {
                 m_winPowerMgr->SetSystemCoolingPolicy(CoolingPolicy::Active, CoolingPolicy::Active);
                 m_winPowerMgr->SetProcessorBoostPolicy(BoostPolicy::Aggressive, BoostPolicy::Aggressive);
                 m_winPowerMgr->SetPowerMode(PowerMode::MaximumPerformance);
             }
             if (m_awccWmiAvailable) {
-                SetGameShift(true); // Engage GameShift (100% fans)
+                SetAwccThermalProfile(0xA1); // Ensure Performance power profile is set
+                SetGameShift(true);          // Engage GameShift (100% fans, unlocked TGP)
             }
             break;
     }

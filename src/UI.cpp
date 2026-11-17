@@ -115,6 +115,10 @@ bool UI::Initialize(HINSTANCE hInstance, int nCmdShow,
         UpdateSlidersFromProfile(profile);
         UpdateRefreshRateControls(profile);
         UpdateWindowsPowerControls(profile);
+
+        ApplyCpuPowerSettings(profile.cpuPl1Watts);
+        ApplyGpuPowerSettings(profile.gpuPowerLimitMw / 1000);
+        OnFanPreset(m_isPerformanceMode ? FanPreset::Cool : FanPreset::Silent);
     }
 
     if (m_monitor) {
@@ -3136,6 +3140,10 @@ void UI::OnProfileChanged(ProfileType type) {
         UpdateSlidersFromProfile(profile);
         UpdateRefreshRateControls(profile);
         UpdateWindowsPowerControls(profile);
+
+        ApplyCpuPowerSettings(profile.cpuPl1Watts);
+        ApplyGpuPowerSettings(profile.gpuPowerLimitMw / 1000);
+        OnFanPreset(m_isPerformanceMode ? FanPreset::Cool : FanPreset::Silent);
     }
 
     if (m_btnProfileToggle) {
@@ -3162,6 +3170,11 @@ void UI::OnProfileToggle(bool isPerformance) {
         UpdateSlidersFromProfile(profile);
         UpdateRefreshRateControls(profile);
         UpdateWindowsPowerControls(profile);
+
+        // Enforce hardware power & thermal limits immediately on profile switch
+        ApplyCpuPowerSettings(profile.cpuPl1Watts);
+        ApplyGpuPowerSettings(profile.gpuPowerLimitMw / 1000);
+        OnFanPreset(isPerformance ? FanPreset::Cool : FanPreset::Silent);
     }
     if (m_btnProfileToggle) {
         InvalidateRect(m_btnProfileToggle, nullptr, FALSE);
@@ -3200,32 +3213,32 @@ void UI::ApplyCpuPowerSettings(int cpuWatts) {
         maxFreqMhz = 1200;
     } else if (cpuWatts <= 28) {
         minCpuPct = 5;
-        maxCpuPct = 30 + ((cpuWatts - 19) * 15) / 9;
+        maxCpuPct = 40;
         boost = BoostPolicy::Disabled;
         epp = 3;
         cooling = CoolingPolicy::Passive;
         maxFreqMhz = 1600;
     } else if (cpuWatts <= 45) {
         minCpuPct = 5;
-        maxCpuPct = 50 + ((cpuWatts - 29) * 25) / 16;
-        boost = BoostPolicy::Disabled;
+        maxCpuPct = 70;
+        boost = BoostPolicy::Enabled;
         epp = 2;
         cooling = CoolingPolicy::Active;
-        maxFreqMhz = 2300;
+        maxFreqMhz = 2600;
     } else if (cpuWatts <= 65) {
         minCpuPct = 10;
-        maxCpuPct = 80 + ((cpuWatts - 46) * 15) / 19;
+        maxCpuPct = 95;
         boost = BoostPolicy::Enabled;
         epp = 1;
         cooling = CoolingPolicy::Active;
-        maxFreqMhz = 3600;
+        maxFreqMhz = 3800;
     } else {
-        minCpuPct = (cpuWatts >= 90) ? 20 : 10;
+        minCpuPct = 20;
         maxCpuPct = 100;
         boost = BoostPolicy::Aggressive;
-        epp = 0;
+        epp = 0; // Maximum Performance
         cooling = CoolingPolicy::Active;
-        maxFreqMhz = 0;
+        maxFreqMhz = 0; // Uncapped
     }
 
     m_winPowerMgr->SetProcessorMinState(minCpuPct, minCpuPct);
@@ -3233,7 +3246,9 @@ void UI::ApplyCpuPowerSettings(int cpuWatts) {
     m_winPowerMgr->SetProcessorBoostPolicy(boost, boost);
     m_winPowerMgr->SetProcessorEnergyPerfPreference(epp, epp);
     m_winPowerMgr->SetSystemCoolingPolicy(cooling, cooling);
-    m_winPowerMgr->SetProcessorMaxFrequency(maxFreqMhz, maxFreqMhz);
+    if (maxFreqMhz > 0) {
+        m_winPowerMgr->SetProcessorMaxFrequency(maxFreqMhz, maxFreqMhz);
+    }
     m_winPowerMgr->CommitActiveScheme();
 
     if (m_powerMgr) {
@@ -3258,13 +3273,25 @@ void UI::ApplyGpuPowerSettings(int gpuWatts) {
         m_gpuMgr->SetPowerLimitMw(gpuWatts * 1000);
     }
 
-    if (m_fanMgr && m_fanMgr->IsAutoMode()) {
+    // Direct Alienware BIOS Embedded Controller power uncap:
+    // On Alienware laptops, GPU wattage is strictly governed by Dell thermal profiles:
+    // 0xA0 (Balanced) caps TGP to 65W-80W in games.
+    // 0xA1 (Performance) unlocks TGP to 115W-135W.
+    // 0xAB + GameShift unlocks maximum 140W TGP.
+    if (m_fanMgr) {
         if (gpuWatts <= 55) {
-            m_fanMgr->SetAwccThermalProfile(0xA5);
+            m_fanMgr->SetAwccThermalProfile(0xA3); // Quiet / Silent (55W)
+            m_fanMgr->SetGameShift(false);
         } else if (gpuWatts <= 90) {
-            m_fanMgr->SetAwccThermalProfile(0xA0);
+            m_fanMgr->SetAwccThermalProfile(0xA0); // Balanced (65W-80W)
+            m_fanMgr->SetGameShift(false);
+        } else if (gpuWatts < 130) {
+            m_fanMgr->SetAwccThermalProfile(0xA1); // Performance (Uncaps to 115W-135W!)
+            m_fanMgr->SetGameShift(false);
         } else {
-            m_fanMgr->SetAwccThermalProfile(0xA4);
+            m_fanMgr->SetAwccThermalProfile(0xA1); // Performance
+            m_fanMgr->SetAwccThermalProfile(0xAB); // Full Speed / G-Mode
+            m_fanMgr->SetGameShift(true);          // Engage GameShift for maximum 140W TGP!
         }
     }
 }
